@@ -27,6 +27,103 @@ async def search_users(name: str) -> list:
             return r.json().get("users", {})
         return {}
 
+async def fetch_time_entries(start_date: str, end_date: str, user_id: int = None, workspace_id: int = None, story_id: int = None) -> list:
+    """Fetch time entries from Kantata API with optional filtering."""
+    if not TOKEN:
+        raise HTTPException(500, "KANTATA_API_TOKEN not set")
+    
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "per_page": 100  # Get more entries per page
+        }
+        
+        if user_id:
+            params["user_id"] = user_id
+        if workspace_id:
+            params["workspace_id"] = workspace_id
+        if story_id:
+            params["story_id"] = story_id
+            
+        r = await client.get("/time_entries.json", params=params)
+        if r.status_code == 200:
+            return r.json().get("time_entries", {})
+        return {}
+
+async def get_user_name(user_id: int) -> str:
+    """Get user name by ID."""
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
+            r = await client.get(f"/users/{user_id}.json")
+            print(f"DEBUG: get_user_name({user_id}) status={r.status_code}")
+            print(f"DEBUG: get_user_name({user_id}) raw response: {r.text}")
+            if r.status_code == 200:
+                response_data = r.json()
+                # The API returns data under 'users' key, then under the user ID
+                users_data = response_data.get("users", {})
+                user_data = users_data.get(str(user_id), {})
+                print(f"DEBUG: get_user_name({user_id}) user_data={user_data}")
+                if not user_data:
+                    print(f"WARNING: get_user_name({user_id}) user_data is empty!")
+                if user_data.get("first_name") and user_data.get("last_name"):
+                    return f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+                elif user_data.get("name"):
+                    return user_data["name"]
+                elif user_data.get("full_name"):
+                    return user_data["full_name"]
+                elif user_data.get("display_name"):
+                    return user_data["display_name"]
+            else:
+                print(f"DEBUG: get_user_name({user_id}) failed, response={r.text}")
+    except Exception as e:
+        print(f"ERROR: get_user_name({user_id}) exception: {e}")
+    return f"User {user_id}"
+
+async def get_workspace_name(workspace_id: int) -> str:
+    """Get workspace name by ID."""
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
+            r = await client.get(f"/workspaces/{workspace_id}.json")
+            print(f"DEBUG: get_workspace_name({workspace_id}) status={r.status_code}")
+            print(f"DEBUG: get_workspace_name({workspace_id}) raw response: {r.text}")
+            if r.status_code == 200:
+                response_data = r.json()
+                # The API returns data under 'workspaces' key, then under the workspace ID
+                workspaces_data = response_data.get("workspaces", {})
+                workspace_data = workspaces_data.get(str(workspace_id), {})
+                print(f"DEBUG: get_workspace_name({workspace_id}) workspace_data={workspace_data}")
+                if not workspace_data:
+                    print(f"WARNING: get_workspace_name({workspace_id}) workspace_data is empty!")
+                return workspace_data.get("title", f"Workspace {workspace_id}")
+            else:
+                print(f"DEBUG: get_workspace_name({workspace_id}) failed, response={r.text}")
+    except Exception as e:
+        print(f"ERROR: get_workspace_name({workspace_id}) exception: {e}")
+    return f"Workspace {workspace_id}"
+
+async def get_story_name(story_id: int) -> str:
+    """Get story name by ID."""
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
+            r = await client.get(f"/stories/{story_id}.json")
+            print(f"DEBUG: get_story_name({story_id}) status={r.status_code}")
+            print(f"DEBUG: get_story_name({story_id}) raw response: {r.text}")
+            if r.status_code == 200:
+                response_data = r.json()
+                # The API returns data under 'stories' key, then under the story ID
+                stories_data = response_data.get("stories", {})
+                story_data = stories_data.get(str(story_id), {})
+                print(f"DEBUG: get_story_name({story_id}) story_data={story_data}")
+                if not story_data:
+                    print(f"WARNING: get_story_name({story_id}) story_data is empty!")
+                return story_data.get("title", f"Story {story_id}")
+            else:
+                print(f"DEBUG: get_story_name({story_id}) failed, response={r.text}")
+    except Exception as e:
+        print(f"ERROR: get_story_name({story_id}) exception: {e}")
+    return f"Story {story_id}"
+
 async def lookup_workspace(name: str) -> dict:
     if not TOKEN:
         raise HTTPException(500, "KANTATA_API_TOKEN not set")
