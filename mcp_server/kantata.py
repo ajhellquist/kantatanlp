@@ -27,29 +27,49 @@ async def search_users(name: str) -> list:
             return r.json().get("users", {})
         return {}
 
-async def fetch_time_entries(start_date: str, end_date: str, user_id: int = None, workspace_id: int = None, story_id: int = None) -> list:
-    """Fetch time entries from Kantata API with optional filtering."""
+async def fetch_time_entries(
+    start_date: str,
+    end_date: str,
+    user_id: int | None = None,
+    workspace_id: int | None = None,
+    story_id: int | None = None,
+) -> dict:
+    """Fetch time entries from Kantata API with optional filtering.
+
+    The Kantata API paginates results, so we loop over all pages until no
+    additional results are returned and accumulate the entries in a single
+    dictionary.
+    """
     if not TOKEN:
         raise HTTPException(500, "KANTATA_API_TOKEN not set")
-    
+
     async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
         params = {
             "start_date": start_date,
             "end_date": end_date,
-            "per_page": 100  # Get more entries per page
+            "per_page": 100,  # Get more entries per page
         }
-        
+
         if user_id:
             params["user_id"] = user_id
         if workspace_id:
             params["workspace_id"] = workspace_id
         if story_id:
             params["story_id"] = story_id
-            
-        r = await client.get("/time_entries.json", params=params)
-        if r.status_code == 200:
-            return r.json().get("time_entries", {})
-        return {}
+
+        all_entries: dict = {}
+        page = 1
+        while True:
+            params["page"] = page
+            r = await client.get("/time_entries.json", params=params)
+            if r.status_code != 200:
+                break
+            entries = r.json().get("time_entries", {})
+            all_entries.update(entries)
+            if len(entries) < params["per_page"]:
+                break
+            page += 1
+        return all_entries
 
 async def get_user_name(user_id: int) -> str:
     """Get user name by ID."""
