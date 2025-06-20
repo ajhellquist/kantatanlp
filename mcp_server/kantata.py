@@ -27,29 +27,58 @@ async def search_users(name: str) -> list:
             return r.json().get("users", {})
         return {}
 
-async def fetch_time_entries(start_date: str, end_date: str, user_id: int = None, workspace_id: int = None, story_id: int = None) -> list:
-    """Fetch time entries from Kantata API with optional filtering."""
+async def fetch_time_entries(
+    start_date: str,
+    end_date: str,
+    user_id: int | None = None,
+    workspace_id: int | None = None,
+    story_id: int | None = None,
+) -> dict:
+    """Fetch all time entries from Kantata API handling pagination."""
     if not TOKEN:
         raise HTTPException(500, "KANTATA_API_TOKEN not set")
-    
+
+    entries: dict = {}
+    page = 1
+    per_page = 100
+
     async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
-        params = {
-            "start_date": start_date,
-            "end_date": end_date,
-            "per_page": 100  # Get more entries per page
-        }
-        
-        if user_id:
-            params["user_id"] = user_id
-        if workspace_id:
-            params["workspace_id"] = workspace_id
-        if story_id:
-            params["story_id"] = story_id
-            
-        r = await client.get("/time_entries.json", params=params)
-        if r.status_code == 200:
-            return r.json().get("time_entries", {})
-        return {}
+        while True:
+            params = {
+                "start_date": start_date,
+                "end_date": end_date,
+                "per_page": per_page,
+                "page": page,
+            }
+
+            if user_id:
+                params["user_id"] = user_id
+            if workspace_id:
+                params["workspace_id"] = workspace_id
+            if story_id:
+                params["story_id"] = story_id
+
+            r = await client.get("/time_entries.json", params=params)
+            if r.status_code != 200:
+                break
+
+            data = r.json()
+            page_entries = data.get("time_entries", {})
+            entries.update(page_entries)
+
+            # Determine if there is another page.  The Kantata API includes a
+            # "next" link in the response headers when more results are
+            # available.  If the header is missing or the returned page has
+            # fewer results than requested, stop fetching.
+            link_header = r.headers.get("Link", "")
+            has_next = "rel=\"next\"" in link_header or data.get("next_page")
+
+            if not has_next or len(page_entries) < per_page:
+                break
+
+            page += 1
+
+    return entries
 
 async def get_user_name(user_id: int) -> str:
     """Get user name by ID."""
