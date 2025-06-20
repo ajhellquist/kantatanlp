@@ -44,7 +44,7 @@ def chat(user_input:str):
         if tool_call.function.name == "query_time_entries":
             # Handle time entry queries - no confirmation needed
             try:
-                r = requests.post("http://localhost:8000/query_time_entries", json=args, timeout=30)
+                r = requests.post("http://localhost:8000/query_time_entries", json=args, timeout=60)
                 if r.ok:
                     res = r.json()
                     print("\n" + "="*80)

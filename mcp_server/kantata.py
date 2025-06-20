@@ -33,26 +33,27 @@ async def fetch_time_entries(
     user_id: int | None = None,
     workspace_id: int | None = None,
     story_id: int | None = None,
-) -> dict:
-    """Fetch all time entries from Kantata API handling pagination."""
+) -> tuple[dict, dict]:
+    """Fetch all time entries from Kantata API handling pagination with included related data."""
     if not TOKEN:
         raise HTTPException(500, "KANTATA_API_TOKEN not set")
 
     entries: dict = {}
+    included_data: dict = {"users": {}, "workspaces": {}, "stories": {}}
     page = 1
-    per_page = 100
+    per_page = 200  # Increased from 100 to reduce number of pages
 
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=30) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=HEADERS, timeout=60) as client:  # Increased timeout to 60s
         while True:
             params = {
-                "start_date": start_date,
-                "end_date": end_date,
+                "date_performed_between": f"{start_date}:{end_date}",
                 "per_page": per_page,
                 "page": page,
+                "include": "user,workspace,story",  # Include related data to avoid extra API calls
             }
 
             if user_id:
-                params["user_id"] = user_id
+                params["with_user_ids"] = user_id
             if workspace_id:
                 params["workspace_id"] = workspace_id
             if story_id:
@@ -65,6 +66,14 @@ async def fetch_time_entries(
             data = r.json()
             page_entries = data.get("time_entries", {})
             entries.update(page_entries)
+            
+            # Collect included data from each page
+            if "users" in data:
+                included_data["users"].update(data["users"])
+            if "workspaces" in data:
+                included_data["workspaces"].update(data["workspaces"])
+            if "stories" in data:
+                included_data["stories"].update(data["stories"])
 
             # Determine if there is another page.  The Kantata API includes a
             # "next" link in the response headers when more results are
@@ -78,7 +87,7 @@ async def fetch_time_entries(
 
             page += 1
 
-    return entries
+    return entries, included_data
 
 async def get_user_name(user_id: int) -> str:
     """Get user name by ID."""

@@ -250,8 +250,12 @@ async def query_time_entries(payload: TimeEntryQuery):
         
         # Fetch time entries using API filters to minimise result size
         print(f"DEBUG: Fetching time entries...")
-        entries = await fetch_time_entries(start_date, end_date, user_id, workspace_id, story_id)
+        entries, included_data = await fetch_time_entries(start_date, end_date, user_id, workspace_id, story_id)
         print(f"DEBUG: Found {len(entries)} entries")
+        print(f"DEBUG: Included data keys: {list(included_data.keys())}")
+        print(f"DEBUG: Users in included data: {list(included_data.get('users', {}).keys())}")
+        print(f"DEBUG: Workspaces in included data: {list(included_data.get('workspaces', {}).keys())}")
+        print(f"DEBUG: Stories in included data: {list(included_data.get('stories', {}).keys())}")
         
         if not entries:
             return {
@@ -268,6 +272,14 @@ async def query_time_entries(payload: TimeEntryQuery):
             first_entry_id = list(entries.keys())[0]
             first_entry = entries[first_entry_id]
             print(f"DEBUG: Sample entry structure: {first_entry}")
+            print(f"DEBUG: Sample entry keys: {list(first_entry.keys())}")
+            # Check if included data is at the top level or nested
+            if "users" in first_entry:
+                print(f"DEBUG: Found users in entry: {list(first_entry['users'].keys())}")
+            if "workspaces" in first_entry:
+                print(f"DEBUG: Found workspaces in entry: {list(first_entry['workspaces'].keys())}")
+            if "stories" in first_entry:
+                print(f"DEBUG: Found stories in entry: {list(first_entry['stories'].keys())}")
         
         # Filter by date_performed and user if specified
         filtered_entries = {}
@@ -289,8 +301,7 @@ async def query_time_entries(payload: TimeEntryQuery):
         
         print(f"DEBUG: After date and user filtering: {len(filtered_entries)} entries")
         
-        # For now, let's create a simplified response without resolving all IDs
-        # This will help us identify if the issue is with the API calls or the formatting
+        # Process entries using included data from the API response
         resolved_entries = {}
         for entry_id, entry_data in filtered_entries.items():
             try:
@@ -300,25 +311,35 @@ async def query_time_entries(payload: TimeEntryQuery):
                 minutes = entry_data.get("time_in_minutes", 0)
                 hours = minutes / 60.0
                 
-                # Get actual names instead of IDs
-                user_id_for_lookup = entry_data.get("user_id", 0)
-                workspace_id_for_lookup = entry_data.get("workspace_id", 0)
-                story_id_for_lookup = entry_data.get("story_id")
-                
-                print(f"DEBUG: Looking up user name for ID: {user_id_for_lookup}")
-                user_name = await get_user_name(user_id_for_lookup)
-                print(f"DEBUG: Got user name: {user_name}")
-                
-                print(f"DEBUG: Looking up workspace name for ID: {workspace_id_for_lookup}")
-                workspace_name = await get_workspace_name(workspace_id_for_lookup)
-                print(f"DEBUG: Got workspace name: {workspace_name}")
-                
-                # Get story name if present
+                # Get names from included data instead of making API calls
+                user_name = "Unknown User"
+                workspace_name = "Unknown Project"
                 task_name = ""
-                if story_id_for_lookup:
-                    print(f"DEBUG: Looking up story name for ID: {story_id_for_lookup}")
-                    task_name = await get_story_name(story_id_for_lookup)
-                    print(f"DEBUG: Got story name: {task_name}")
+                
+                # Extract user name from included user data
+                user_id_for_lookup = entry_data.get("user_id")
+                if user_id_for_lookup and str(user_id_for_lookup) in included_data.get("users", {}):
+                    user_data = included_data["users"][str(user_id_for_lookup)]
+                    if user_data.get("first_name") and user_data.get("last_name"):
+                        user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+                    elif user_data.get("name"):
+                        user_name = user_data["name"]
+                    elif user_data.get("full_name"):
+                        user_name = user_data["full_name"]
+                    elif user_data.get("display_name"):
+                        user_name = user_data["display_name"]
+                
+                # Extract workspace name from included workspace data
+                workspace_id_for_lookup = entry_data.get("workspace_id")
+                if workspace_id_for_lookup and str(workspace_id_for_lookup) in included_data.get("workspaces", {}):
+                    workspace_data = included_data["workspaces"][str(workspace_id_for_lookup)]
+                    workspace_name = workspace_data.get("title", f"Workspace {workspace_id_for_lookup}")
+                
+                # Extract story name from included story data
+                story_id_for_lookup = entry_data.get("story_id")
+                if story_id_for_lookup and str(story_id_for_lookup) in included_data.get("stories", {}):
+                    story_data = included_data["stories"][str(story_id_for_lookup)]
+                    task_name = story_data.get("title", "")
                 
                 # Create resolved entry with actual names
                 resolved_entries[entry_id] = {
