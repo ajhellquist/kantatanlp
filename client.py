@@ -40,8 +40,29 @@ def chat(user_input:str):
         args = json.loads(tool_call.function.arguments)
         print(f"↳ OpenAI called {tool_call.function.name} with {args}")
         
-        # Show confirmation screen
-        if tool_call.function.name == "log_time_entry_by_name":
+        # Handle different tool types
+        if tool_call.function.name == "query_time_entries":
+            # Handle time entry queries - no confirmation needed
+            try:
+                r = requests.post("http://localhost:8000/query_time_entries", json=args, timeout=30)
+                if r.ok:
+                    res = r.json()
+                    print("\n" + "="*80)
+                    print("📊 TIME ENTRIES QUERY RESULTS")
+                    print("="*80)
+                    print(res['formatted_output'])
+                    print("="*80)
+                    messages.append({"role":"tool",
+                                     "tool_call_id": tool_call.id,
+                                     "name": tool_call.function.name,
+                                     "content": json.dumps(res)})
+                else:
+                    print("❌ MCP error:", r.text)
+            except Exception as e:
+                print(f"❌ Error querying time entries: {e}")
+                
+        elif tool_call.function.name == "log_time_entry_by_name":
+            # Show confirmation screen for time entry creation
             # Fetch actual names and IDs for confirmation
             try:
                 # Get user details
@@ -100,6 +121,7 @@ def chat(user_input:str):
                 print("• Type corrections (e.g., 'change hours to 2' or 'user should be Sarah')")
                 print("="*60)
         else:
+            # Show confirmation screen for other time entry creation methods
             print("\n" + "="*60)
             print("📋 TIME ENTRY CONFIRMATION")
             print("="*60)
@@ -118,47 +140,48 @@ def chat(user_input:str):
             print("• Type corrections (e.g., 'change hours to 2' or 'user should be 12345')")
             print("="*60)
         
-        # Get user confirmation
-        confirmation = input("Your response: ").strip().lower()
-        
-        if confirmation in ['yes', 'y', 'confirm', 'ok', 'proceed', 'yup', 'yeah', 'sure', 'go ahead']:
-            # Proceed with the time entry
-            if tool_call.function.name == "log_time_entry_by_name":
-                endpoint = "http://localhost:8000/time_entry_by_name"
-            else:
-                endpoint = MCP_URL
-                
-            r = requests.post(endpoint, json=args, timeout=10)
-            if r.ok:
-                res = r.json()
+        # Get user confirmation only for time entry creation, not for queries
+        if tool_call.function.name != "query_time_entries":
+            confirmation = input("Your response: ").strip().lower()
+            
+            if confirmation in ['yes', 'y', 'confirm', 'ok', 'proceed', 'yup', 'yeah', 'sure', 'go ahead']:
+                # Proceed with the time entry
                 if tool_call.function.name == "log_time_entry_by_name":
-                    task_info = f"task '{res['task_name']}' " if res['task_name'] else ""
-                    print(f"✅ Logged {res['minutes']} min "
-                          f"on {res['date']} for {res['user_name']} "
-                          f"on project '{res['project_name']}' "
-                          f"{task_info}"
-                          f"(entry #{res['entry_id']})")
+                    endpoint = "http://localhost:8000/time_entry_by_name"
                 else:
-                    print(f"✅ Logged {res['minutes']} min "
-                          f"on {res['date']} for user {res['user_id']} "
-                          f"(entry #{res['entry_id']})")
-                messages.append({"role":"tool",
-                                 "tool_call_id": tool_call.id,
-                                 "name": tool_call.function.name,
-                                 "content": json.dumps(res)})
+                    endpoint = MCP_URL
+                    
+                r = requests.post(endpoint, json=args, timeout=10)
+                if r.ok:
+                    res = r.json()
+                    if tool_call.function.name == "log_time_entry_by_name":
+                        task_info = f"task '{res['task_name']}' " if res['task_name'] else ""
+                        print(f"✅ Logged {res['minutes']} min "
+                              f"on {res['date']} for {res['user_name']} "
+                              f"on project '{res['project_name']}' "
+                              f"{task_info}"
+                              f"(entry #{res['entry_id']})")
+                    else:
+                        print(f"✅ Logged {res['minutes']} min "
+                              f"on {res['date']} for user {res['user_id']} "
+                              f"(entry #{res['entry_id']})")
+                    messages.append({"role":"tool",
+                                     "tool_call_id": tool_call.id,
+                                     "name": tool_call.function.name,
+                                     "content": json.dumps(res)})
+                else:
+                    print("❌ MCP error:", r.text)
+            elif confirmation in ['no', 'n', 'cancel', 'abort', 'stop']:
+                print("❌ Time entry cancelled.")
             else:
-                print("❌ MCP error:", r.text)
-        elif confirmation in ['no', 'n', 'cancel', 'abort', 'stop']:
-            print("❌ Time entry cancelled.")
-        else:
-            # Handle corrections - restart the conversation to avoid state corruption
-            print(f"🔄 Processing correction: '{confirmation}'")
-            # Clear the conversation and start fresh with the correction
-            messages.clear()
-            messages.append({"role":"system",
-                           "content":"You are an assistant that logs time to Kantata OX. When users mention 'today', 'today's date', or similar phrases, always use 'today' as the date parameter. When no specific date is mentioned, default to 'today'. Always extract the date parameter from the user's request and include it in the function call."})
-            correction_msg = f"Please correct the time entry: {confirmation}"
-            chat(correction_msg)
+                # Handle corrections - restart the conversation to avoid state corruption
+                print(f"🔄 Processing correction: '{confirmation}'")
+                # Clear the conversation and start fresh with the correction
+                messages.clear()
+                messages.append({"role":"system",
+                               "content":"You are an assistant that logs time to Kantata OX. When users mention 'today', 'today's date', or similar phrases, always use 'today' as the date parameter. When no specific date is mentioned, default to 'today'. Always extract the date parameter from the user's request and include it in the function call."})
+                correction_msg = f"Please correct the time entry: {confirmation}"
+                chat(correction_msg)
     else:
         print(msg.content)
 

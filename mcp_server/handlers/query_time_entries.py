@@ -248,9 +248,9 @@ async def query_time_entries(payload: TimeEntryQuery):
                 # If story lookup fails, continue without story filter
                 pass
         
-        # Fetch time entries (without user_id filter - we'll filter after)
+        # Fetch time entries using API filters to minimise result size
         print(f"DEBUG: Fetching time entries...")
-        entries = await fetch_time_entries(start_date, end_date, None, workspace_id, story_id)
+        entries = await fetch_time_entries(start_date, end_date, user_id, workspace_id, story_id)
         print(f"DEBUG: Found {len(entries)} entries")
         
         if not entries:
